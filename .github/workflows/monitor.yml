@@ -1,0 +1,30 @@
+name: ODFW Monitor
+
+on:
+  schedule:
+    - cron: '*/6 * * * *'  # Runs every 6 minutes
+  workflow_dispatch:        # Allows manual testing button
+
+jobs:
+  run-monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Run Python script
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
+          TO_SMS_EMAIL: ${{ secrets.TO_SMS_EMAIL }}
+        run: python odfw_monitor.py
