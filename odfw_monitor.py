@@ -3,7 +3,6 @@ from playwright.sync_api import sync_playwright
 import smtplib
 from email.mime.text import MIMEText
 
-# Pull configurations from GitHub Secrets
 URL = "https://myodfw.com/reserve-your-hunt?feedback_url=https%3A%2F%2Fmyodfw.com%2Freserve-your-hunt&ppp_mode=resource_list"
 GMAIL_USER = os.environ.get('GMAIL_USER')
 GMAIL_APP_PASS = os.environ.get('GMAIL_APP_PASS')
@@ -24,14 +23,22 @@ def check_calendar():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
+        # Load page and wait for iframe network activity to finish
         page.goto(URL, wait_until="networkidle")
-        page.wait_for_timeout(3000) 
+        page.wait_for_timeout(5000) 
 
-        # Using a broad selector for anything with a green background or 'available' class
-        available_slots = page.locator("td.available, .calendar-day-green, [style*='background-color: green']").all()
+        total_available = 0
 
-        if len(available_slots) > 0:
-            print(f"Found {len(available_slots)} available slot(s)!")
+        # Scan the main page AND all embedded iframes for green squares
+        for frame in page.frames:
+            try:
+                slots = frame.locator("td.available").all()
+                total_available += len(slots)
+            except Exception:
+                continue
+
+        if total_available > 0:
+            print(f"Found {total_available} available slot(s)!")
             send_sms(f"ODFW ALERT: Permit spot available! Book now: {URL}")
         else:
             print("No green slots found.")
