@@ -2,8 +2,11 @@ name: ODFW Monitor
 
 on:
   schedule:
-    - cron: '*/6 * * * *'  # Runs every 6 minutes
-  workflow_dispatch:        # Allows manual testing button
+    - cron: '*/6 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   run-monitor:
@@ -28,3 +31,10 @@ jobs:
           GMAIL_APP_PASS: ${{ secrets.GMAIL_APP_PASS }}
           TO_SMS_EMAIL: ${{ secrets.TO_SMS_EMAIL }}
         run: python odfw_monitor.py
+
+      - name: Save state changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add last_state.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update calendar state [skip ci]" && git push)
