@@ -7,6 +7,7 @@ URL = "https://myodfw.com/reserve-your-hunt?feedback_url=https%3A%2F%2Fmyodfw.co
 GMAIL_USER = os.environ.get('GMAIL_USER')
 GMAIL_APP_PASS = os.environ.get('GMAIL_APP_PASS')
 TO_SMS_EMAIL = os.environ.get('TO_SMS_EMAIL')
+STATE_FILE = "last_state.txt"
 
 def send_sms(body):
     msg = MIMEText(body)
@@ -18,31 +19,55 @@ def send_sms(body):
         server.login(GMAIL_USER, GMAIL_APP_PASS)
         server.send_message(msg)
 
+def get_last_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r") as f:
+                return f.read().strip()
+        except Exception:
+            return ""
+    return ""
+
+def save_current_state(state_str):
+    with open(STATE_FILE, "w") as f:
+        f.write(state_str)
+
 def check_calendar():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
-        # Load page and wait for iframe network activity to finish
         page.goto(URL, wait_until="networkidle")
         page.wait_for_timeout(5000) 
 
-        total_available = 0
+        found_slots = []
 
-        # Scan the main page AND all embedded iframes for green squares
+        # Scan frames for unique identifiers of available slots
         for frame in page.frames:
             try:
                 slots = frame.locator("td.available").all()
-                total_available += len(slots)
+                for slot in slots:
+                    identifier = slot.get_attribute("onclick") or slot.get_attribute("title") or "available"
+                    found_slots.append(identifier)
             except Exception:
                 continue
 
-        if total_available > 0:
-            print(f"Found {total_available} available slot(s)!")
-            send_sms(f"ODFW ALERT: Permit spot available! Book now: {URL}")
-        else:
-            print("No green slots found.")
+        found_slots.sort()
+        current_state_str = ",".join(found_slots)
+        last_state_str = get_last_state()
+
+        # Only act if the available slots have changed since the last check
+        if current_state_str != last_state_str:
+            if len(found_slots) > 0:
+                print(f"Change detected! Found {len(found_slots)} slot(s). Sending alert...")
+                send_sms(f"ODFW ALERT: Permit spot available ({len(found_slots)} spot(s))! Book now: {URL}")
+            else:
+                print("All slots taken. State reset to 0.")
             
+            save_current_state(current_state_str)
+        else:
+            print("No changes detected since last check. Skipping text alert.")
+
         browser.close()
 
 if __name__ == "__main__":
