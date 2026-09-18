@@ -1,7 +1,7 @@
 import os
-from playwright.sync_api import sync_playwright
 import smtplib
 from email.mime.text import MIMEText
+from playwright.sync_api import sync_playwright
 
 URL = "https://myodfw.com/reserve-your-hunt?feedback_url=https%3A%2F%2Fmyodfw.com%2Freserve-your-hunt&ppp_mode=resource_list"
 GMAIL_USER = os.environ.get('GMAIL_USER')
@@ -37,38 +37,44 @@ def check_calendar():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
         
-        page.goto(URL, wait_until="networkidle")
-        page.wait_for_timeout(5000) 
+        try:
+            # Use domcontentloaded to prevent hanging on slow background elements
+            page.goto(URL, wait_until="domcontentloaded", timeout=60000)
+            page.wait_for_timeout(7000) 
 
-        found_slots = []
+            found_slots = []
 
-        # Scan frames for unique identifiers of available slots
-        for frame in page.frames:
-            try:
-                slots = frame.locator("td.available").all()
-                for slot in slots:
-                    identifier = slot.get_attribute("onclick") or slot.get_attribute("title") or "available"
-                    found_slots.append(identifier)
-            except Exception:
-                continue
+            for frame in page.frames:
+                try:
+                    slots = frame.locator("td.available").all()
+                    for slot in slots:
+                        identifier = slot.get_attribute("onclick") or slot.get_attribute("title") or "available"
+                        found_slots.append(identifier)
+                except Exception:
+                    continue
 
-        found_slots.sort()
-        current_state_str = ",".join(found_slots)
-        last_state_str = get_last_state()
+            found_slots.sort()
+            current_state_str = ",".join(found_slots)
+            last_state_str = get_last_state()
 
-        # Only act if the available slots have changed since the last check
-        if current_state_str != last_state_str:
-            if len(found_slots) > 0:
-                print(f"Change detected! Found {len(found_slots)} slot(s). Sending alert...")
-                send_sms(f"ODFW ALERT: Permit spot available ({len(found_slots)} spot(s))! Book now: {URL}")
+            if current_state_str != last_state_str:
+                if len(found_slots) > 0:
+                    print(f"Change detected! Found {len(found_slots)} slot(s). Sending alert...")
+                    send_sms(f"ODFW ALERT: Permit spot available ({len(found_slots)} spot(s))! Book now: {URL}")
+                else:
+                    print("All slots taken. State reset to 0.")
+                
+                save_current_state(current_state_str)
             else:
-                print("All slots taken. State reset to 0.")
-            
-            save_current_state(current_state_str)
-        else:
-            print("No changes detected since last check. Skipping text alert.")
+                print("No changes detected since last check. Skipping text alert.")
 
-        browser.close()
+        except Exception as e:
+            print(f"Temporary page load error: {e}")
+            # Ensure last_state.txt exists even if page fails to load
+            if not os.path.exists(STATE_FILE):
+                save_current_state("")
+        finally:
+            browser.close()
 
 if __name__ == "__main__":
     check_calendar()
