@@ -36,5 +36,6 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
+          touch last_state.txt
           git add last_state.txt
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update calendar state [skip ci]" && git push)
+          git diff --staged --quiet || (git commit -m "Update state [skip ci]" && git push)
